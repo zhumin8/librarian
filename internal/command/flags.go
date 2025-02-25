@@ -19,17 +19,18 @@ import (
 )
 
 var (
-	flagAPIPath     string
-	flagAPIRoot     string
-	flagBranch      string
-	flagBuild       bool
-	flagGitHubToken string
-	flagImage       string
-	flagLanguage    string
-	flagOutput      string
-	flagPush        bool
-	flagRepoRoot    string
-	flagWorkRoot    string
+	flagAPIPath        string
+	flagAPIRoot        string
+	flagGeneratorInput string
+	flagBranch         string
+	flagBuild          bool
+	flagGitHubToken    string
+	flagImage          string
+	flagLanguage       string
+	flagOutput         string
+	flagPush           bool
+	flagRepoRoot       string
+	flagWorkRoot       string
 )
 
 func addFlagAPIPath(fs *flag.FlagSet) {
@@ -38,6 +39,10 @@ func addFlagAPIPath(fs *flag.FlagSet) {
 
 func addFlagAPIRoot(fs *flag.FlagSet) {
 	fs.StringVar(&flagAPIRoot, "api-root", "", "location of googleapis repository. If undefined, googleapis will be cloned to /tmp")
+}
+
+func addGeneratorInput(fs *flag.FlagSet) {
+	fs.StringVar(&flagGeneratorInput, "generator-input", "", "generator input dir. If undefined, will be empty")
 }
 
 func addFlagBranch(fs *flag.FlagSet) {
@@ -80,7 +85,7 @@ var supportedLanguages = map[string]bool{
 	"cpp":    false,
 	"dotnet": true,
 	"go":     false,
-	"java":   false,
+	"java":   true,
 	"node":   false,
 	"php":    false,
 	"python": false,

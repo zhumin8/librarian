@@ -208,9 +208,16 @@ var CmdGenerate = &Command{
 			}
 		}
 
+		var generatorInput string
+		if flagLanguage == "java" {
+			generatorInput = filepath.Join(flagGeneratorInput)
+		} else {
+			generatorInput = ""
+		}
+
 		image := deriveImage(nil)
 		// The final empty string argument is for generator input - we don't have any
-		if err := container.Generate(ctx, image, apiRoot, outputDir, "", flagAPIPath); err != nil {
+		if err := container.Generate(ctx, image, apiRoot, outputDir, generatorInput, flagAPIPath); err != nil {
 			return err
 		}
 
@@ -605,6 +612,7 @@ func init() {
 		addFlagWorkRoot,
 		addFlagAPIPath,
 		addFlagAPIRoot,
+		addGeneratorInput,
 		addFlagLanguage,
 		addFlagOutput,
 		addFlagBuild,

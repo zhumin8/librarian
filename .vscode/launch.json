@@ -1,0 +1,27 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch Package",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "./cmd/librarian",
+            // "args": ["generate", "-language=dotnet",
+            // "-api-path=/usr/local/google/home/zhumin/repos/googleapis/google/cloud/accessapproval/v1",
+            // "-api-root=/usr/local/google/home/zhumin/repos/googleapis"],
+            "args": ["generate", "-language=java",
+            "-api-path=/usr/local/google/home/zhumin/repos/googleapis/google/cloud/accessapproval/v1",
+            "-api-root=/usr/local/google/home/zhumin/repos/googleapis",
+            "-generator-input=/usr/local/google/home/zhumin/repos/java-test-2/generation_config.yaml",
+            "-work-root=/usr/local/google/home/zhumin/repos/java-test",
+            "-output=/usr/local/google/home/zhumin/repos/java-test",
+            ],
+
+            "dlvFlags": ["--check-go-version=false"] 
+        }
+    ]
+}
