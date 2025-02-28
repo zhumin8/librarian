@@ -16,11 +16,35 @@
             "args": ["generate", "-language=java",
             "-api-path=/usr/local/google/home/zhumin/repos/googleapis/google/cloud/accessapproval/v1",
             "-api-root=/usr/local/google/home/zhumin/repos/googleapis",
-            "-generator-input=/usr/local/google/home/zhumin/repos/java-test-2/generation_config.yaml",
+            "-generator-input=/usr/local/google/home/zhumin/repos/java-test-2",
             "-work-root=/usr/local/google/home/zhumin/repos/java-test",
             "-output=/usr/local/google/home/zhumin/repos/java-test",
             ],
 
+            "dlvFlags": ["--check-go-version=false"] 
+        },
+
+        {
+            "name": "generate dotnet",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "./cmd/librarian",
+            "args": ["generate", "-language=dotnet",
+            "-api-path=/usr/local/google/home/zhumin/repos/googleapis/google/cloud/accessapproval/v1",
+            "-api-root=/usr/local/google/home/zhumin/repos/googleapis"],
+            "dlvFlags": ["--check-go-version=false"] 
+        },
+
+        {
+            "name": "update dotnet",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "./cmd/librarian",
+            "args": ["update-apis", "-language=dotnet",
+            "-work-root=/usr/local/google/home/zhumin/repos/dotnet-test",
+            "-api-root=/usr/local/google/home/zhumin/repos/googleapis"],
             "dlvFlags": ["--check-go-version=false"] 
         }
     ]

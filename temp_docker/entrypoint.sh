@@ -18,6 +18,7 @@ fi
 echo "renamed api-root to api-definitions-path"
 echo $args
 
+# temp: depend on output route for config.yaml(input) and output
 # Check if --output is provided
 if [[ "$@" == *"--output"* ]]; then
   # Extract the value of --output
@@ -54,13 +55,27 @@ fi
 echo "removed api-path"
 echo $args
 
+# Check if --generator-input is provided
+if [[ "$@" == *"--generator-input"* ]]; then
+  # Extract the value of --generator-input
+  generator-input=$(echo "$@" | sed 's/.*--generator-input=\([^ ]*\).*/\1/')
+
+  # Remove --generator-input from the arguments
+  args=$(echo "$args" | sed 's/--generator-input=[^ ]*//')
+
+else
+  # If --output is not provided, keep the arguments as is
+  args="$args"
+fi
+echo "removed generator-input"
+echo $args
 
 echo "LOOK HERE LINE --------"
 
 echo "Running Java generator with args: $args"
 
 echo "python /src/library_generation/cli/entry_point.py \
-$args --library-names=apigee-connect,asset "
+$args  "
 
 python /src/library_generation/cli/entry_point.py \
-$args --library-names=apigee-connect,asset 
+$args  

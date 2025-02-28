@@ -211,6 +211,9 @@ var CmdGenerate = &Command{
 		var generatorInput string
 		if flagLanguage == "java" {
 			generatorInput = filepath.Join(flagGeneratorInput)
+			// if err := os.CopyFS(tmpRoot, os.DirFS(generatorInput)); err != nil {
+			// 	return err
+			// }
 		} else {
 			generatorInput = ""
 		}
