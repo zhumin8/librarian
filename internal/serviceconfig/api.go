@@ -17,7 +17,14 @@
 package serviceconfig
 
 const (
+	langAll    = "all"
+	langCsharp = "csharp"
+	langGo     = "go"
+	langJava   = "java"
+	langNodejs = "nodejs"
+	langPhp    = "php"
 	langPython = "python"
+	langRuby   = "ruby"
 	langRust   = "rust"
 
 	titleAppsScriptTypes           = "Google Apps Script Types"
@@ -64,16 +71,7 @@ type API struct {
 
 	// Transports defines the supported transports per language.
 	// Map key is the language name (e.g., "python", "rust").
-	Transports map[string]Transport
-}
-
-// Transport describes the supported communication protocols for an API.
-type Transport struct {
-	// GRPC indicates gRPC transport support.
-	GRPC bool
-
-	// REST indicates REST (HTTP/JSON) transport support.
-	REST bool
+	Transports map[string]string
 }
 
 // APIs defines all API paths and their language availability.
@@ -328,7 +326,7 @@ var APIs = []API{
 	{Path: "google/cloud/saasplatform/saasservicemgmt/v1beta1", Languages: []string{langPython}},
 	{Path: "google/cloud/scheduler/v1"},
 	{Path: "google/cloud/scheduler/v1beta1", Languages: []string{langPython}},
-	{Path: "google/cloud/secretmanager/v1", OpenAPI: "testdata/secretmanager_openapi_v1.json"},
+	{Path: "google/cloud/secretmanager/v1", OpenAPI: "testdata/secretmanager_openapi_v1.json", Transports: map[string]string{langCsharp: "grpc+rest", langGo: "grpc+rest", langJava: "grpc+rest", langNodejs: "grpc+rest", langPhp: "grpc+rest", langPython: "grpc+rest"}},
 	{Path: "google/cloud/secretmanager/v1beta2", Languages: []string{langPython}},
 	{Path: "google/cloud/secrets/v1beta1", Languages: []string{langPython}},
 	{Path: "google/cloud/securesourcemanager/v1"},
