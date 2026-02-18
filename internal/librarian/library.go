@@ -49,6 +49,16 @@ func fillDefaults(lib *config.Library, d *config.Default) *config.Library {
 	if d.Python != nil {
 		return fillPython(lib, d)
 	}
+	if d.Java != nil {
+		return fillJava(lib, d)
+	}
+	return lib
+}
+
+func fillJava(lib *config.Library, d *config.Default) *config.Library {
+	if lib.Java == nil {
+		lib.Java = &config.JavaPackage{}
+	}
 	return lib
 }
 
