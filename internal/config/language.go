@@ -55,6 +55,9 @@ type JavaAPI struct {
 
 // JavaDefault represents the Java-specific default configuration.
 type JavaDefault struct {
+	// FormatterJar is the path to the google-java-format JAR file.
+	FormatterJar string `yaml:"formatter_jar,omitempty"`
+
 	// GeneratorJar is the path to the gapic-generator-java JAR file.
 	// If set, a temporary protoc-gen-java_gapic wrapper will be created.
 	GeneratorJar string `yaml:"generator_jar,omitempty"`
@@ -66,6 +69,8 @@ type JavaDefault struct {
 
 // JavaPackage represents the Java-specific configuration for a library.
 type JavaPackage struct {
+	// SkipFormat disables Java code formatting for this library.
+	SkipFormat bool `yaml:"skip_format,omitempty"`
 }
 
 // RustDefault contains Rust-specific default configuration.

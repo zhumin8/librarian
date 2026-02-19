@@ -116,7 +116,7 @@ func runGenerate(ctx context.Context, cfg *config.Config, all bool, libraryName 
 	if err := generateLibraries(ctx, cfg.Language, libraries, googleapisDir, rustDartSources, cfg.Default); err != nil {
 		return err
 	}
-	if err := formatLibraries(ctx, cfg.Language, libraries); err != nil {
+	if err := formatLibraries(ctx, cfg.Language, libraries, cfg.Default); err != nil {
 		return err
 	}
 	return postGenerate(ctx, cfg.Language)
@@ -205,7 +205,7 @@ func generateLibraries(ctx context.Context, language string, libraries []*config
 
 // formatLibraries iterates over all the given libraries sequentially,
 // delegating to language-specific code to format each library.
-func formatLibraries(ctx context.Context, language string, libraries []*config.Library) error {
+func formatLibraries(ctx context.Context, language string, libraries []*config.Library, defaults *config.Default) error {
 	for _, library := range libraries {
 		switch language {
 		case languageFake:
@@ -229,7 +229,9 @@ func formatLibraries(ctx context.Context, language string, libraries []*config.L
 			// generation and formatting for Python.
 			return nil
 		case languageJava:
-			return nil
+			if err := java.Format(ctx, library, defaults); err != nil {
+				return err
+			}
 		default:
 			return fmt.Errorf("language %q does not support formatting", language)
 		}

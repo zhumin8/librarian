@@ -63,7 +63,7 @@ func TestCreateProtocOptions(t *testing.T) {
 				"--java_out=proto-out",
 				"--java_grpc_out=grpc-out",
 				"--java_gapic_out=metadata:gapic-out",
-				"--java_gapic_opt=metadata,api-service-config=../../testdata/googleapis/google/cloud/secretmanager/v1/secretmanager_v1.yaml,grpc-service-config=../../testdata/googleapis/google/cloud/secretmanager/v1/secretmanager_grpc_service_config.json,transport=grpc,rest-numeric-enums",
+				"--java_gapic_opt=metadata,api-service-config=../../testdata/googleapis/google/cloud/secretmanager/v1/secretmanager_v1.yaml,grpc-service-config=../../testdata/googleapis/google/cloud/secretmanager/v1/secretmanager_grpc_service_config.json,transport=grpc+rest,rest-numeric-enums",
 			},
 		},
 		{
@@ -146,5 +146,95 @@ func TestGenerateAPI(t *testing.T) {
 	restructuredPath := filepath.Join(outdir, "google-cloud-secretmanager", "src", "main", "java")
 	if _, err := os.Stat(restructuredPath); err != nil {
 		t.Errorf("expected restructured path %s to exist: %v", restructuredPath, err)
+	}
+}
+
+func TestRestructureOutput(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+
+	version := "v1"
+	libraryID := "secretmanager"
+	libraryName := "google-cloud-secretmanager"
+
+	// Create a dummy structure to mimic generator output
+	dirs := []string{
+		filepath.Join(tmpDir, version, "gapic", "src", "main", "java"),
+		filepath.Join(tmpDir, version, "gapic", "src", "main", "resources", "META-INF", "native-image"),
+		filepath.Join(tmpDir, version, "gapic", "samples", "snippets", "generated", "src", "main", "java"),
+		filepath.Join(tmpDir, version, "proto"),
+	}
+
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Create a dummy sample file
+	sampleFile := filepath.Join(tmpDir, version, "gapic", "samples", "snippets", "generated", "src", "main", "java", "Sample.java")
+	if err := os.WriteFile(sampleFile, []byte("public class Sample {}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a dummy reflect-config.json
+	reflectConfigPath := filepath.Join(tmpDir, version, "gapic", "src", "main", "resources", "META-INF", "native-image", "reflect-config.json")
+	if err := os.WriteFile(reflectConfigPath, []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := restructureOutput(tmpDir, libraryID, version); err != nil {
+		t.Fatalf("restructureOutput failed: %v", err)
+	}
+
+	// Verify sample file location
+	wantSamplePath := filepath.Join(tmpDir, "samples", "snippets", "generated", "Sample.java")
+	if _, err := os.Stat(wantSamplePath); err != nil {
+		t.Errorf("expected sample file at %s, but it was not found: %v", wantSamplePath, err)
+	}
+
+	// Verify reflect-config.json location
+	wantReflectPath := filepath.Join(tmpDir, libraryName, "src", "main", "resources", "META-INF", "native-image", "reflect-config.json")
+	if _, err := os.Stat(wantReflectPath); err != nil {
+		t.Errorf("expected reflect-config.json at %s, but it was not found: %v", wantReflectPath, err)
+	}
+}
+
+func TestFormat(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+
+	// Create a dummy java file
+	javaFile := filepath.Join(tmpDir, "SomeClass.java")
+	unformatted := "public class SomeClass { public void method() { } }"
+	if err := os.WriteFile(javaFile, []byte(unformatted), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a dummy sample file that should be skipped
+	sampleDir := filepath.Join(tmpDir, "samples", "snippets", "generated")
+	if err := os.MkdirAll(sampleDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	sampleFile := filepath.Join(sampleDir, "Sample.java")
+	if err := os.WriteFile(sampleFile, []byte(unformatted), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// We can't easily run the real google-java-format in this test environment
+	// without a real JAR. But we can test that it returns nil if no jar is provided.
+	lib := &config.Library{Output: tmpDir}
+	if err := Format(t.Context(), lib, nil); err != nil {
+		t.Errorf("Format(nil defaults) returned error: %v", err)
+	}
+
+	if err := Format(t.Context(), lib, &config.Default{Java: &config.JavaDefault{}}); err != nil {
+		t.Errorf("Format(empty FormatterJar) returned error: %v", err)
+	}
+
+	// Test skip_format
+	lib.Java = &config.JavaPackage{SkipFormat: true}
+	if err := Format(t.Context(), lib, &config.Default{Java: &config.JavaDefault{FormatterJar: "fake.jar"}}); err != nil {
+		t.Errorf("Format(skip_format) returned error: %v", err)
 	}
 }

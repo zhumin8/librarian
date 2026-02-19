@@ -170,18 +170,23 @@ func generateAPI(ctx context.Context, api *config.API, library *config.Library, 
 
 func createProtocOptions(api *config.API, library *config.Library, googleapisDir, protoDir, grpcDir, gapicDir string) ([]string, error) {
 	args := []string{
+		// --java_out generates standard Protocol Buffer Java classes.
 		fmt.Sprintf("--java_out=%s", protoDir),
 	}
 
 	transport := library.Transport
 	if transport == "" {
-		transport = "grpc" // Default to grpc
+		transport = "grpc+rest" // Default to grpc+rest
 	}
 
+	// --java_grpc_out generates the gRPC service stubs.
+	// This is omitted if the transport is purely REST-based.
 	if transport != "rest" {
 		args = append(args, fmt.Sprintf("--java_grpc_out=%s", grpcDir))
 	}
 
+	// gapicOpts are passed to the GAPIC generator via --java_gapic_opt.
+	// "metadata" enables the generation of gapic_metadata.json and GraalVM reflect-config.json.
 	gapicOpts := []string{"metadata"}
 
 	sc, err := serviceconfig.Find(googleapisDir, api.Path, serviceconfig.LangJava)
@@ -189,6 +194,8 @@ func createProtocOptions(api *config.API, library *config.Library, googleapisDir
 		return nil, err
 	}
 	if sc != nil && sc.ServiceConfig != "" {
+		// api-service-config specifies the service YAML (e.g., logging_v2.yaml) which
+		// contains documentation, HTTP rules, and other API-level configuration.
 		gapicOpts = append(gapicOpts, fmt.Sprintf("api-service-config=%s", filepath.Join(googleapisDir, sc.ServiceConfig)))
 	}
 
@@ -197,14 +204,20 @@ func createProtocOptions(api *config.API, library *config.Library, googleapisDir
 		return nil, err
 	}
 	if gc != "" {
+		// grpc-service-config specifies the retry and timeout settings for the gRPC client.
 		gapicOpts = append(gapicOpts, fmt.Sprintf("grpc-service-config=%s", filepath.Join(googleapisDir, gc)))
 	}
 
+	// transport specifies whether to generate gRPC, REST, or both types of clients.
 	gapicOpts = append(gapicOpts, fmt.Sprintf("transport=%s", transport))
 
-	// rest-numeric-enums
+	// rest-numeric-enums ensures that enums in REST requests are encoded as numbers
+	// rather than strings, which is the standard for Google Cloud APIs.
 	gapicOpts = append(gapicOpts, "rest-numeric-enums")
 
+	// --java_gapic_out invokes the GAPIC generator.
+	// The "metadata:" prefix is a parameter that tells the generator to include
+	// the metadata files mentioned above in the output srcjar/zip for GraalVM support.
 	args = append(args, fmt.Sprintf("--java_gapic_out=metadata:%s", gapicDir))
 	args = append(args, "--java_gapic_opt="+strings.Join(gapicOpts, ","))
 
@@ -270,8 +283,8 @@ func unzip(src, dest string) error {
 }
 
 func restructureOutput(outputDir, libraryID, version string) error {
-	gapicSrcDir := filepath.Join(outputDir, version, "gapic", "src", "main", "java")
-	gapicTestDir := filepath.Join(outputDir, version, "gapic", "src", "test", "java")
+	gapicSrcDir := filepath.Join(outputDir, version, "gapic", "src", "main")
+	gapicTestDir := filepath.Join(outputDir, version, "gapic", "src", "test")
 	protoSrcDir := filepath.Join(outputDir, version, "proto")
 	resourceNameSrcDir := filepath.Join(outputDir, version, "gapic", "proto", "src", "main", "java")
 	samplesDir := filepath.Join(outputDir, version, "gapic", "samples", "snippets", "generated", "src", "main", "java")
@@ -282,8 +295,8 @@ func restructureOutput(outputDir, libraryID, version string) error {
 		libraryName = "google-cloud-" + libraryID
 	}
 
-	gapicDestDir := filepath.Join(outputDir, libraryName, "src", "main", "java")
-	gapicTestDestDir := filepath.Join(outputDir, libraryName, "src", "test", "java")
+	gapicDestDir := filepath.Join(outputDir, libraryName, "src", "main")
+	gapicTestDestDir := filepath.Join(outputDir, libraryName, "src", "test")
 	protoDestDir := filepath.Join(outputDir, fmt.Sprintf("proto-%s-%s", libraryName, version), "src", "main", "java")
 	resourceNameDestDir := filepath.Join(outputDir, fmt.Sprintf("proto-%s-%s", libraryName, version), "src", "main", "java")
 	grpcDestDir := filepath.Join(outputDir, fmt.Sprintf("grpc-%s-%s", libraryName, version), "src", "main", "java")
@@ -377,5 +390,70 @@ func copyAndMerge(src, dest string) error {
 			}
 		}
 	}
+	return nil
+}
+
+// FormatLibraries formats all given libraries in sequence.
+func FormatLibraries(ctx context.Context, libraries []*config.Library, defaults *config.Default) error {
+	for _, library := range libraries {
+		if err := Format(ctx, library, defaults); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Format formats a Java client library using google-java-format.
+func Format(ctx context.Context, library *config.Library, defaults *config.Default) error {
+	if library.Java != nil && library.Java.SkipFormat {
+		return nil
+	}
+
+	if defaults == nil || defaults.Java == nil || defaults.Java.FormatterJar == "" {
+		return nil
+	}
+
+	jarPath, err := filepath.Abs(defaults.Java.FormatterJar)
+	if err != nil {
+		return fmt.Errorf("failed to resolve formatter jar path: %w", err)
+	}
+
+	var files []string
+	err = filepath.WalkDir(library.Output, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if filepath.Ext(path) != ".java" {
+			return nil
+		}
+		// Mimic format_source.sh: exclude samples/snippets/generated
+		if strings.Contains(path, filepath.Join("samples", "snippets", "generated")) {
+			return nil
+		}
+		files = append(files, path)
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to find java files for formatting: %w", err)
+	}
+
+	if len(files) == 0 {
+		return nil
+	}
+
+	args := []string{"-jar", jarPath, "--replace"}
+	args = append(args, files...)
+
+	cmd := exec.CommandContext(ctx, "java", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("formatting failed: %w", err)
+	}
+
 	return nil
 }
