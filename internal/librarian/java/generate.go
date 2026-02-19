@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/googleapis/librarian/internal/config"
@@ -453,6 +454,128 @@ func Format(ctx context.Context, library *config.Library, defaults *config.Defau
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("formatting failed: %w", err)
+	}
+
+	return nil
+}
+
+// Clean removes files in the library's output directory that are not in the keep list.
+// It specifically targets the following patterns:
+//   - proto-google-cloud-<library>-<version>
+//   - grpc-google-cloud-<library>-<version>
+//   - google-cloud-<library> (the main GAPIC module)
+//   - samples/snippets/generated
+//
+// It preserves integration tests matching the pattern:
+// /{{ module_name }}/google-.*/src/test/java/com/google/cloud/.*/v.*/it/IT.*Test.java
+//
+// The cleaning is done in two passes:
+// 1. A top-down walk to remove files that are not kept.
+// 2. A bottom-up walk to remove directories that have become empty.
+func Clean(library *config.Library) error {
+	// Adjusting libraryID for Java naming convention as seen in v0.7.0
+	libraryName := library.Name
+	if !strings.HasPrefix(libraryName, "google-cloud-") {
+		libraryName = "google-cloud-" + libraryName
+	}
+
+	// Target patterns to clean, similar to owlbot.yaml logic
+	patterns := []string{
+		fmt.Sprintf("proto-%s-*", libraryName),
+		fmt.Sprintf("grpc-%s-*", libraryName),
+		libraryName,
+		filepath.Join("samples", "snippets", "generated"),
+	}
+
+	keepSet := make(map[string]bool)
+	for _, k := range library.Keep {
+		keepSet[k] = true
+	}
+
+	// Regex for keeping integration tests:
+	// /{{ module_name }}/google-.*/src/test/java/com/google/cloud/.*/v.*/it/IT.*Test.java
+	itTestRegex := regexp.MustCompile(`google-cloud-.*[/\\]src[/\\]test[/\\]java[/\\]com[/\\]google[/\\]cloud[/\\].*[/\\]v.*[/\\]it[/\\]IT.*Test\.java$`)
+
+	for _, pattern := range patterns {
+		matches, err := filepath.Glob(filepath.Join(library.Output, pattern))
+		if err != nil {
+			return err
+		}
+		for _, match := range matches {
+			if err := cleanPath(match, library.Output, keepSet, itTestRegex); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func cleanPath(targetPath, root string, keepSet map[string]bool, itTestRegex *regexp.Regexp) error {
+	// First pass: remove all files that are not in keepSet.
+	err := filepath.WalkDir(targetPath, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" || d.Name() == ".github" || d.Name() == ".gemini" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if keepSet[rel] {
+			return nil
+		}
+		// Check for integration tests that should be kept
+		if itTestRegex.MatchString(path) {
+			return nil
+		}
+		return os.Remove(path)
+	})
+	if err != nil {
+		return err
+	}
+
+	// Second pass: remove empty directories that are not in keepSet.
+	var dirs []string
+	err = filepath.WalkDir(targetPath, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" || d.Name() == ".github" || d.Name() == ".gemini" {
+				return filepath.SkipDir
+			}
+			dirs = append(dirs, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// Remove directories in reverse order (bottom-up).
+	for i := len(dirs) - 1; i >= 0; i-- {
+		d := dirs[i]
+		rel, err := filepath.Rel(root, d)
+		if err != nil {
+			return err
+		}
+		if keepSet[rel] {
+			continue
+		}
+		// os.Remove only removes empty directories.
+		// If it contains a kept IT test, it will fail and we'll ignore it.
+		_ = os.Remove(d)
 	}
 
 	return nil

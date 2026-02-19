@@ -157,8 +157,12 @@ func cleanLibraries(language string, libraries []*config.Library) error {
 		switch language {
 		case languageFake:
 			// No cleaning needed.
-		case languageDart, languageJava:
+		case languageDart:
 			if err := checkAndClean(library.Output, library.Keep); err != nil {
+				return err
+			}
+		case languageJava:
+			if err := java.Clean(library); err != nil {
 				return err
 			}
 		case languagePython:
