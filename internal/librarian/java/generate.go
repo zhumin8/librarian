@@ -29,8 +29,18 @@ import (
 	"github.com/googleapis/librarian/internal/serviceconfig"
 )
 
-// Generate generates a Java client library.
-func Generate(ctx context.Context, library *config.Library, defaults *config.Default, googleapisDir string) error {
+// GenerateLibraries generates all the given libraries in sequence.
+func GenerateLibraries(ctx context.Context, libraries []*config.Library, defaults *config.Default, googleapisDir string) error {
+	for _, library := range libraries {
+		if err := generate(ctx, library, defaults, googleapisDir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// generate generates a Java client library.
+func generate(ctx context.Context, library *config.Library, defaults *config.Default, googleapisDir string) error {
 	if len(library.APIs) == 0 {
 		return fmt.Errorf("no apis configured for library %q", library.Name)
 	}

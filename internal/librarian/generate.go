@@ -24,6 +24,7 @@ import (
 	"github.com/googleapis/librarian/internal/fetch"
 	"github.com/googleapis/librarian/internal/librarian/dart"
 	"github.com/googleapis/librarian/internal/librarian/golang"
+	"github.com/googleapis/librarian/internal/librarian/java"
 	"github.com/googleapis/librarian/internal/librarian/python"
 	"github.com/googleapis/librarian/internal/librarian/rust"
 	"github.com/googleapis/librarian/internal/sidekick/source"
@@ -112,7 +113,7 @@ func runGenerate(ctx context.Context, cfg *config.Config, all bool, libraryName 
 	if err := cleanLibraries(cfg.Language, libraries); err != nil {
 		return err
 	}
-	if err := generateLibraries(ctx, cfg.Language, libraries, googleapisDir, rustDartSources); err != nil {
+	if err := generateLibraries(ctx, cfg.Language, libraries, googleapisDir, rustDartSources, cfg.Default); err != nil {
 		return err
 	}
 	if err := formatLibraries(ctx, cfg.Language, libraries); err != nil {
@@ -156,7 +157,7 @@ func cleanLibraries(language string, libraries []*config.Library) error {
 		switch language {
 		case languageFake:
 			// No cleaning needed.
-		case languageDart:
+		case languageDart, languageJava:
 			if err := checkAndClean(library.Output, library.Keep); err != nil {
 				return err
 			}
@@ -183,7 +184,7 @@ func cleanLibraries(language string, libraries []*config.Library) error {
 
 // generateLibraries delegates to language-specific code to generate all the
 // given libraries.
-func generateLibraries(ctx context.Context, language string, libraries []*config.Library, googleapisDir string, src *source.Sources) error {
+func generateLibraries(ctx context.Context, language string, libraries []*config.Library, googleapisDir string, src *source.Sources, defaults *config.Default) error {
 	switch language {
 	case languageFake:
 		return fakeGenerateLibraries(libraries)
@@ -193,6 +194,8 @@ func generateLibraries(ctx context.Context, language string, libraries []*config
 		return python.GenerateLibraries(ctx, libraries, googleapisDir)
 	case languageGo:
 		return golang.GenerateLibraries(ctx, libraries, googleapisDir)
+	case languageJava:
+		return java.GenerateLibraries(ctx, libraries, defaults, googleapisDir)
 	case languageRust:
 		return rust.GenerateLibraries(ctx, libraries, src)
 	default:
@@ -224,6 +227,8 @@ func formatLibraries(ctx context.Context, language string, libraries []*config.L
 		case languagePython:
 			// TODO(https://github.com/googleapis/librarian/issues/3730): separate
 			// generation and formatting for Python.
+			return nil
+		case languageJava:
 			return nil
 		default:
 			return fmt.Errorf("language %q does not support formatting", language)

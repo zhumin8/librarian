@@ -35,7 +35,7 @@ func TestGenerateLibraries(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	t.Chdir(tmpDir)
-	if err := generateLibraries(t.Context(), "fake", []*config.Library{library}, "", nil); err != nil {
+	if err := generateLibraries(t.Context(), "fake", []*config.Library{library}, "", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
