@@ -389,7 +389,7 @@ var APIs = []API{
 	{Path: "google/cloud/scheduler/v1beta1", Languages: []string{LangGo, LangPython}},
 	{Path: "google/cloud/secretmanager/v1", OpenAPI: "testdata/secretmanager_openapi_v1.json"},
 	{Path: "google/cloud/secretmanager/v1beta2", Languages: []string{LangGo, LangPython, LangJava}},
-	{Path: "google/cloud/secrets/v1beta1", Languages: []string{LangPython}},
+	{Path: "google/cloud/secrets/v1beta1", Languages: []string{LangPython, LangJava}},
 	{Path: "google/cloud/securesourcemanager/v1"},
 	{Path: "google/cloud/security/privateca/v1"},
 	{Path: "google/cloud/security/privateca/v1beta1", Languages: []string{LangPython}},
