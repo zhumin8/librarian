@@ -153,6 +153,7 @@ func TestGenerateAPI(t *testing.T) {
 func TestRestructureOutput(t *testing.T) {
 	t.Parallel()
 	tmpDir := t.TempDir()
+	googleapisDir := t.TempDir()
 
 	version := "v1"
 	libraryID := "secretmanager"
@@ -172,6 +173,15 @@ func TestRestructureOutput(t *testing.T) {
 		}
 	}
 
+	// Create dummy proto in googleapisDir
+	protoPath := filepath.Join(googleapisDir, "google", "cloud", "secretmanager", "v1", "service.proto")
+	if err := os.MkdirAll(filepath.Dir(protoPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(protoPath, []byte("syntax = \"proto3\";"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
 	// Create a dummy sample file
 	sampleFile := filepath.Join(tmpDir, version, "gapic", "samples", "snippets", "generated", "src", "main", "java", "Sample.java")
 	if err := os.WriteFile(sampleFile, []byte("public class Sample {}"), 0644); err != nil {
@@ -184,7 +194,7 @@ func TestRestructureOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := restructureOutput(tmpDir, libraryID, version); err != nil {
+	if err := restructureOutput(tmpDir, libraryID, version, googleapisDir, []string{protoPath}); err != nil {
 		t.Fatalf("restructureOutput failed: %v", err)
 	}
 
@@ -198,6 +208,12 @@ func TestRestructureOutput(t *testing.T) {
 	wantReflectPath := filepath.Join(tmpDir, libraryName, "src", "main", "resources", "META-INF", "native-image", "reflect-config.json")
 	if _, err := os.Stat(wantReflectPath); err != nil {
 		t.Errorf("expected reflect-config.json at %s, but it was not found: %v", wantReflectPath, err)
+	}
+
+	// Verify proto file location
+	wantProtoPath := filepath.Join(tmpDir, fmt.Sprintf("proto-%s-%s", libraryName, version), "src", "main", "proto", "google", "cloud", "secretmanager", "v1", "service.proto")
+	if _, err := os.Stat(wantProtoPath); err != nil {
+		t.Errorf("expected proto file at %s, but it was not found: %v", wantProtoPath, err)
 	}
 }
 

@@ -157,7 +157,7 @@ func generateAPI(ctx context.Context, api *config.API, library *config.Library, 
 		}
 	}
 
-	if err := restructureOutput(outdir, library.Name, version); err != nil {
+	if err := restructureOutput(outdir, library.Name, version, googleapisDir, protos); err != nil {
 		return fmt.Errorf("failed to restructure output: %w", err)
 	}
 
@@ -283,7 +283,7 @@ func unzip(src, dest string) error {
 	return nil
 }
 
-func restructureOutput(outputDir, libraryID, version string) error {
+func restructureOutput(outputDir, libraryID, version, googleapisDir string, protos []string) error {
 	gapicSrcDir := filepath.Join(outputDir, version, "gapic", "src", "main")
 	gapicTestDir := filepath.Join(outputDir, version, "gapic", "src", "test")
 	protoSrcDir := filepath.Join(outputDir, version, "proto")
@@ -339,7 +339,53 @@ func restructureOutput(outputDir, libraryID, version string) error {
 		return err
 	}
 
+	// Copy proto files to proto-*/src/main/proto
+	protoFilesDestDir := filepath.Join(outputDir, fmt.Sprintf("proto-%s-%s", libraryName, version), "src", "main", "proto")
+	if err := copyProtos(googleapisDir, protos, protoFilesDestDir); err != nil {
+		return fmt.Errorf("failed to copy proto files: %w", err)
+	}
+
 	return nil
+}
+
+func copyProtos(googleapisDir string, protos []string, destDir string) error {
+	for _, proto := range protos {
+		if strings.HasSuffix(proto, "google/cloud/common_resources.proto") {
+			continue
+		}
+		// Calculate relative path from googleapisDir to preserve directory structure
+		rel, err := filepath.Rel(googleapisDir, proto)
+		if err != nil {
+			return err
+		}
+
+		target := filepath.Join(destDir, rel)
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			return err
+		}
+
+		if err := copyFile(proto, target); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func copyFile(src, dest string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
 }
 
 func moveAndMerge(sourceDir, targetDir string) error {
