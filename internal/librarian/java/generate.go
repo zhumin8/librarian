@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/googleapis/librarian/internal/config"
+	"github.com/googleapis/librarian/internal/librarian/java/clirr"
 	"github.com/googleapis/librarian/internal/serviceconfig"
 )
 
@@ -344,6 +345,12 @@ func restructureOutput(outputDir, libraryID, version, googleapisDir string, prot
 		return err
 	}
 
+	// Generate clirr-ignored-differences.xml for the proto module.
+	protoModuleRoot := filepath.Join(outputDir, fmt.Sprintf("proto-%s-%s", libraryName, version))
+	if err := clirr.Generate(protoModuleRoot); err != nil {
+		return fmt.Errorf("failed to generate clirr ignore file: %w", err)
+	}
+
 	// Copy proto files to proto-*/src/main/proto
 	protoFilesDestDir := filepath.Join(outputDir, fmt.Sprintf("proto-%s-%s", libraryName, version), "src", "main", "proto")
 	if err := copyProtos(googleapisDir, protos, protoFilesDestDir); err != nil {
@@ -581,6 +588,10 @@ func cleanPath(targetPath, root string, keepSet map[string]bool, itTestRegex *re
 			return err
 		}
 		if keepSet[rel] {
+			return nil
+		}
+		// Bypass clirr-ignored-differences.xml files as they are generated once and manually maintained.
+		if d.Name() == "clirr-ignored-differences.xml" {
 			return nil
 		}
 		// Check for integration tests that should be kept
