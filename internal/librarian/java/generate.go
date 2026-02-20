@@ -290,7 +290,12 @@ func restructureOutput(outputDir, libraryID, version, googleapisDir string, prot
 	resourceNameSrcDir := filepath.Join(outputDir, version, "gapic", "proto", "src", "main", "java")
 	samplesDir := filepath.Join(outputDir, version, "gapic", "samples", "snippets", "generated", "src", "main", "java")
 
-	// Adjusting libraryID for Java naming convention as seen in v0.7.0
+	// Adjusting libraryID for Java naming convention as seen in v0.7.0.
+	// This logic derives destination directory names (e.g., google-cloud-secretmanager,
+	// proto-google-cloud-secretmanager-v1) from the 'name' field in librarian.yaml.
+	// This currently handles cases where the API path (e.g., google/cloud/secrets)
+	// differs from the desired library name (e.g., secretmanager).
+	// TODO: Consider making sub-module naming patterns customizable in librarian.yaml.
 	libraryName := libraryID
 	if !strings.HasPrefix(libraryName, "google-cloud-") {
 		libraryName = "google-cloud-" + libraryID
