@@ -32,9 +32,9 @@ import (
 )
 
 // GenerateLibraries generates all the given libraries in sequence.
-func GenerateLibraries(ctx context.Context, libraries []*config.Library, defaults *config.Default, googleapisDir string) error {
+func GenerateLibraries(ctx context.Context, libraries []*config.Library, googleapisDir string) error {
 	for _, library := range libraries {
-		if err := generate(ctx, library, defaults, googleapisDir); err != nil {
+		if err := generate(ctx, library, googleapisDir); err != nil {
 			return err
 		}
 	}
@@ -42,7 +42,7 @@ func GenerateLibraries(ctx context.Context, libraries []*config.Library, default
 }
 
 // generate generates a Java client library.
-func generate(ctx context.Context, library *config.Library, defaults *config.Default, googleapisDir string) error {
+func generate(ctx context.Context, library *config.Library, googleapisDir string) error {
 	if len(library.APIs) == 0 {
 		return fmt.Errorf("no apis configured for library %q", library.Name)
 	}
@@ -59,14 +59,14 @@ func generate(ctx context.Context, library *config.Library, defaults *config.Def
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 	for _, api := range library.APIs {
-		if err := generateAPI(ctx, api, library, defaults, googleapisDir, outdir); err != nil {
+		if err := generateAPI(ctx, api, library, googleapisDir, outdir); err != nil {
 			return fmt.Errorf("failed to generate api %q: %w", api.Path, err)
 		}
 	}
 	return nil
 }
 
-func generateAPI(ctx context.Context, api *config.API, library *config.Library, defaults *config.Default, googleapisDir, outdir string) error {
+func generateAPI(ctx context.Context, api *config.API, library *config.Library, googleapisDir, outdir string) error {
 	version := extractVersion(api.Path)
 	if version == "" {
 		return fmt.Errorf("failed to extract version from api path %q", api.Path)
@@ -99,7 +99,7 @@ func generateAPI(ctx context.Context, api *config.API, library *config.Library, 
 	cmdArgs = append(cmdArgs, protocOptions...)
 	cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
 	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
-	if cleanup, err := setupPluginWrappers(cmd, defaults); err != nil {
+	if cleanup, err := setupPluginWrappers(cmd, library); err != nil {
 		return err
 	} else if cleanup != nil {
 		defer cleanup()
@@ -366,18 +366,16 @@ func moveAndMerge(sourceDir, targetDir string) error {
 // setupPluginWrappers creates temporary executable scripts to wrap Java-based protoc plugins.
 // It prepends the directory containing these scripts to the command's PATH so protoc
 // can find them. It returns a cleanup function to delete the temporary directory.
-func setupPluginWrappers(cmd *exec.Cmd, defaults *config.Default) (func(), error) {
-	if defaults == nil || defaults.Java == nil || (defaults.Java.GeneratorJar == "" && defaults.Java.GRPCPlugin == "") {
+func setupPluginWrappers(cmd *exec.Cmd, library *config.Library) (func(), error) {
+	if library.Java == nil || (library.Java.GeneratorJar == "" && library.Java.GRPCPlugin == "") {
 		return nil, nil
 	}
-
 	tmpDir, err := os.MkdirTemp("", "librarian-java-plugin-")
 	if err != nil {
 		return nil, err
 	}
-
-	if defaults.Java.GeneratorJar != "" {
-		jarPath, err := filepath.Abs(defaults.Java.GeneratorJar)
+	if library.Java.GeneratorJar != "" {
+		jarPath, err := filepath.Abs(library.Java.GeneratorJar)
 		if err != nil {
 			os.RemoveAll(tmpDir)
 			return nil, err
@@ -389,9 +387,8 @@ func setupPluginWrappers(cmd *exec.Cmd, defaults *config.Default) (func(), error
 			return nil, err
 		}
 	}
-
-	if defaults.Java.GRPCPlugin != "" {
-		pluginPath, err := filepath.Abs(defaults.Java.GRPCPlugin)
+	if library.Java.GRPCPlugin != "" {
+		pluginPath, err := filepath.Abs(library.Java.GRPCPlugin)
 		if err != nil {
 			os.RemoveAll(tmpDir)
 			return nil, err
@@ -403,15 +400,14 @@ func setupPluginWrappers(cmd *exec.Cmd, defaults *config.Default) (func(), error
 			return nil, err
 		}
 	}
-
 	cmd.Env = append(os.Environ(), "PATH="+tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return func() { os.RemoveAll(tmpDir) }, nil
 }
 
 // FormatLibraries formats all given libraries in sequence.
-func FormatLibraries(ctx context.Context, libraries []*config.Library, defaults *config.Default) error {
+func FormatLibraries(ctx context.Context, libraries []*config.Library) error {
 	for _, library := range libraries {
-		if err := Format(ctx, library, defaults); err != nil {
+		if err := Format(ctx, library); err != nil {
 			return err
 		}
 	}
@@ -419,11 +415,11 @@ func FormatLibraries(ctx context.Context, libraries []*config.Library, defaults 
 }
 
 // Format formats a Java client library using google-java-format.
-func Format(ctx context.Context, library *config.Library, defaults *config.Default) error {
-	if (library.Java != nil && library.Java.SkipFormat) || defaults == nil || defaults.Java == nil || defaults.Java.FormatterJar == "" {
+func Format(ctx context.Context, library *config.Library) error {
+	if (library.Java != nil && library.Java.SkipFormat) || library.Java == nil || library.Java.FormatterJar == "" {
 		return nil
 	}
-	jarPath, err := filepath.Abs(defaults.Java.FormatterJar)
+	jarPath, err := filepath.Abs(library.Java.FormatterJar)
 	if err != nil {
 		return fmt.Errorf("failed to resolve formatter jar path: %w", err)
 	}

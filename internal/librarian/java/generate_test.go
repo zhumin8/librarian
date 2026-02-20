@@ -104,20 +104,19 @@ func TestGenerateAPI_WrapperCreation(t *testing.T) {
 	}
 
 	outdir := t.TempDir()
-	_ = &config.Library{
+	lib := &config.Library{
 		Name:   "secretmanager",
 		Output: outdir,
-		Java:   &config.JavaPackage{},
-		APIs:   []*config.API{{Path: "google/cloud/secretmanager/v1"}},
-	}
-	defaults := &config.Default{
-		Java: &config.JavaDefault{
-			GeneratorJar: jarPath,
+		Java: &config.JavaPackage{
+			JavaDefault: config.JavaDefault{
+				GeneratorJar: jarPath,
+			},
 		},
+		APIs: []*config.API{{Path: "google/cloud/secretmanager/v1"}},
 	}
 
-	if defaults.Java.GeneratorJar != jarPath {
-		t.Errorf("expected GeneratorJar %s, got %s", jarPath, defaults.Java.GeneratorJar)
+	if lib.Java.GeneratorJar != jarPath {
+		t.Errorf("expected GeneratorJar %s, got %s", jarPath, lib.Java.GeneratorJar)
 	}
 }
 func TestGenerateAPI(t *testing.T) {
@@ -135,7 +134,6 @@ func TestGenerateAPI(t *testing.T) {
 		t.Context(),
 		&config.API{Path: "google/cloud/secretmanager/v1"},
 		&config.Library{Name: "secretmanager", Output: outdir},
-		&config.Default{},
 		googleapisDir,
 		outdir,
 	)
@@ -241,17 +239,18 @@ func TestFormat(t *testing.T) {
 	// We can't easily run the real google-java-format in this test environment
 	// without a real JAR. But we can test that it returns nil if no jar is provided.
 	lib := &config.Library{Output: tmpDir}
-	if err := Format(t.Context(), lib, nil); err != nil {
-		t.Errorf("Format(nil defaults) returned error: %v", err)
+	if err := Format(t.Context(), lib); err != nil {
+		t.Errorf("Format(nil lib.Java) returned error: %v", err)
 	}
 
-	if err := Format(t.Context(), lib, &config.Default{Java: &config.JavaDefault{}}); err != nil {
+	lib.Java = &config.JavaPackage{}
+	if err := Format(t.Context(), lib); err != nil {
 		t.Errorf("Format(empty FormatterJar) returned error: %v", err)
 	}
 
 	// Test skip_format
-	lib.Java = &config.JavaPackage{SkipFormat: true}
-	if err := Format(t.Context(), lib, &config.Default{Java: &config.JavaDefault{FormatterJar: "fake.jar"}}); err != nil {
+	lib.Java = &config.JavaPackage{SkipFormat: true, JavaDefault: config.JavaDefault{FormatterJar: "fake.jar"}}
+	if err := Format(t.Context(), lib); err != nil {
 		t.Errorf("Format(skip_format) returned error: %v", err)
 	}
 }

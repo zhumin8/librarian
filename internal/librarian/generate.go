@@ -199,7 +199,7 @@ func generateLibraries(ctx context.Context, language string, libraries []*config
 	case languageGo:
 		return golang.GenerateLibraries(ctx, libraries, googleapisDir)
 	case languageJava:
-		return java.GenerateLibraries(ctx, libraries, defaults, googleapisDir)
+		return java.GenerateLibraries(ctx, libraries, googleapisDir)
 	case languageRust:
 		return rust.GenerateLibraries(ctx, libraries, src)
 	default:
@@ -233,7 +233,7 @@ func formatLibraries(ctx context.Context, language string, libraries []*config.L
 			// generation and formatting for Python.
 			return nil
 		case languageJava:
-			if err := java.Format(ctx, library, defaults); err != nil {
+			if err := java.Format(ctx, library); err != nil {
 				return err
 			}
 		default:
