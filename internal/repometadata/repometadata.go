@@ -200,6 +200,18 @@ func (metadata *RepoMetadata) WriteJava(libraryOutputDir, repoShort, transport s
 		APIID                string `json:"api_id,omitempty"`
 		LibraryType          string `json:"library_type,omitempty"`
 		RequiresBilling      bool   `json:"requires_billing,omitempty"`
+
+		// Added Java specific fields
+		APIReference          string `json:"api_reference,omitempty"`
+		CodeownerTeam         string `json:"codeowner_team,omitempty"`
+		ExcludedDependencies  string `json:"excluded_dependencies,omitempty"`
+		ExcludedPoms          string `json:"excluded_poms,omitempty"`
+		IssueTracker          string `json:"issue_tracker,omitempty"`
+		RestDocumentation     string `json:"rest_documentation,omitempty"`
+		RpcDocumentation      string `json:"rpc_documentation,omitempty"`
+		ExtraVersionedModules string `json:"extra_versioned_modules,omitempty"`
+		RecommendedPackage    string `json:"recommended_package,omitempty"`
+		MinJavaVersion        string `json:"min_java_version,omitempty"`
 	}{
 		APIShortname:         metadata.APIShortname,
 		NamePretty:           metadata.NamePretty,
@@ -214,7 +226,6 @@ func (metadata *RepoMetadata) WriteJava(libraryOutputDir, repoShort, transport s
 		DistributionName:     metadata.DistributionName,
 		APIID:                metadata.APIID,
 		LibraryType:          metadata.LibraryType,
-		// RequiresBilling is currently not in RepoMetadata, defaults to false
 	}
 
 	data, err := json.MarshalIndent(javaMetadata, "", "  ")

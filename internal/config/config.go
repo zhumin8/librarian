@@ -147,6 +147,9 @@ type Default struct {
 
 	// Python contains Python-specific default configuration.
 	Python *PythonDefault `yaml:"python,omitempty"`
+
+	// Java contains Java-specific default configuration.
+	Java *JavaPackage `yaml:"java,omitempty"`
 }
 
 // Library represents a library configuration.
@@ -216,6 +219,9 @@ type Library struct {
 
 	// Rust contains Rust-specific library configuration.
 	Rust *RustCrate `yaml:"rust,omitempty"`
+
+	// Java contains Java-specific library configuration.
+	Java *JavaModule `yaml:"java,omitempty"`
 }
 
 // API describes an API to include in a library.
@@ -223,4 +229,46 @@ type API struct {
 	// Path specifies which googleapis Path to generate from (for generated
 	// libraries).
 	Path string `yaml:"path,omitempty"`
+}
+
+// JavaModule contains Java-specific library configuration.
+type JavaModule struct {
+	// APIReference is the URL to the API reference.
+	APIReference string `yaml:"api_reference,omitempty"`
+
+	// CodeownerTeam is the GitHub team that owns the library.
+	CodeownerTeam string `yaml:"codeowner_team,omitempty"`
+
+	// ExcludedDependencies is a comma-separated list of dependencies to exclude.
+	ExcludedDependencies string `yaml:"excluded_dependencies,omitempty"`
+
+	// ExcludedPoms is a comma-separated list of POMs to exclude.
+	ExcludedPoms string `yaml:"excluded_poms,omitempty"`
+
+	// ExtraVersionedModules is a comma-separated list of extra modules that are versioned.
+	ExtraVersionedModules string `yaml:"extra_versioned_modules,omitempty"`
+
+	// GroupID is the Maven group ID.
+	GroupID string `yaml:"group_id,omitempty"`
+
+	// MinJavaVersion is the minimum Java version required.
+	MinJavaVersion int `yaml:"min_java_version,omitempty"`
+
+	// RecommendedPackage is the recommended package for the library.
+	RecommendedPackage string `yaml:"recommended_package,omitempty"`
+
+	// RequiresBilling indicates if the API requires billing to be enabled.
+	RequiresBilling *bool `yaml:"requires_billing,omitempty"`
+
+	// RestDocumentation is the URL to the REST documentation.
+	RestDocumentation string `yaml:"rest_documentation,omitempty"`
+
+	// RpcDocumentation is the URL to the RPC documentation.
+	RpcDocumentation string `yaml:"rpc_documentation,omitempty"`
+}
+
+// JavaPackage contains Java-specific default configuration.
+type JavaPackage struct {
+	// GroupID is the Maven group ID.
+	GroupID string `yaml:"group_id,omitempty"`
 }
