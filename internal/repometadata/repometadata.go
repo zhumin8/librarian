@@ -179,6 +179,57 @@ func (metadata *RepoMetadata) Write(libraryOutputDir string) error {
 	return nil
 }
 
+// WriteJava writes the given RepoMetadata into libraryOutputDir/.repo-metadata.json
+// using 2-space indentation and the specific field order and set expected by
+// Java tooling.
+func (metadata *RepoMetadata) WriteJava(libraryOutputDir, repoShort, transport string) error {
+	// javaMetadata defines the exact fields and order expected by Java tooling,
+	// matching the hermetic build's Python implementation.
+	javaMetadata := struct {
+		APIShortname         string `json:"api_shortname,omitempty"`
+		NamePretty           string `json:"name_pretty,omitempty"`
+		ProductDocumentation string `json:"product_documentation,omitempty"`
+		APIDescription       string `json:"api_description,omitempty"`
+		ClientDocumentation  string `json:"client_documentation,omitempty"`
+		ReleaseLevel         string `json:"release_level,omitempty"`
+		Transport            string `json:"transport,omitempty"`
+		Language             string `json:"language,omitempty"`
+		Repo                 string `json:"repo,omitempty"`
+		RepoShort            string `json:"repo_short,omitempty"`
+		DistributionName     string `json:"distribution_name,omitempty"`
+		APIID                string `json:"api_id,omitempty"`
+		LibraryType          string `json:"library_type,omitempty"`
+		RequiresBilling      bool   `json:"requires_billing,omitempty"`
+	}{
+		APIShortname:         metadata.APIShortname,
+		NamePretty:           metadata.NamePretty,
+		ProductDocumentation: metadata.ProductDocumentation,
+		APIDescription:       metadata.APIDescription,
+		ClientDocumentation:  metadata.ClientDocumentation,
+		ReleaseLevel:         metadata.ReleaseLevel,
+		Transport:            transport,
+		Language:             metadata.Language,
+		Repo:                 metadata.Repo,
+		RepoShort:            repoShort,
+		DistributionName:     metadata.DistributionName,
+		APIID:                metadata.APIID,
+		LibraryType:          metadata.LibraryType,
+		// RequiresBilling is currently not in RepoMetadata, defaults to false
+	}
+
+	data, err := json.MarshalIndent(javaMetadata, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+
+	metadataPath := filepath.Join(libraryOutputDir, repoMetadataFile)
+	if err := os.WriteFile(metadataPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write metadata file: %w", err)
+	}
+
+	return nil
+}
+
 // Read reads the .repo-metadata.json file in the given directory and unmarshals
 // it as a RepoMetadata.
 func Read(libraryOutputDir string) (*RepoMetadata, error) {

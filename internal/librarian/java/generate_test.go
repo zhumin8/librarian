@@ -34,6 +34,11 @@ import (
 
 const googleapisDir = "../../testdata/googleapis"
 
+var defaultConfig = &config.Config{
+	Language: "java",
+	Repo:     "googleapis/google-cloud-java",
+}
+
 func TestCreateProtocOptions(t *testing.T) {
 	for _, test := range []struct {
 		name     string
@@ -137,6 +142,7 @@ func TestGenerateAPI(t *testing.T) {
 	outdir := t.TempDir()
 	err := generateAPI(
 		t.Context(),
+		defaultConfig,
 		&config.API{Path: "google/cloud/secretmanager/v1"},
 		&config.Library{Name: "secretmanager", Output: outdir},
 		googleapisDir,
@@ -177,7 +183,7 @@ func TestGenerate_ErrorCases(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			err := generate(t.Context(), test.library, googleapisDir)
+			err := generate(t.Context(), defaultConfig, test.library, googleapisDir)
 			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
 				t.Errorf("generate() error = %v, wantErr %v", err, test.wantErr)
 			}
@@ -190,7 +196,7 @@ func TestGenerateLibraries_ErrorCase(t *testing.T) {
 	libraries := []*config.Library{
 		{Name: "lib1", APIs: []*config.API{{Path: "google/cloud/secretmanager/v1"}}, Output: t.TempDir()},
 	}
-	err := GenerateLibraries(t.Context(), libraries, googleapisDir)
+	err := GenerateLibraries(t.Context(), defaultConfig, libraries, googleapisDir)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -237,8 +243,29 @@ func TestPostProcess(t *testing.T) {
 		Version: "1.2.3",
 		APIs:    []*config.API{{Path: "google/cloud/secretmanager/v1"}},
 	}
-	if err := postProcess(t.Context(), outdir, libraryName, version, googleapisDir, gapicDir, protos, library); err != nil {
+	if err := postProcess(t.Context(), defaultConfig, outdir, libraryName, version, googleapisDir, gapicDir, protos, library); err != nil {
 		t.Fatalf("postProcess failed: %v", err)
+	}
+
+	// Verify .repo-metadata.json
+	metadataPath := filepath.Join(outdir, ".repo-metadata.json")
+	if _, err := os.Stat(metadataPath); err != nil {
+		t.Errorf("expected .repo-metadata.json to exist: %v", err)
+	}
+	metadataContent, err := os.ReadFile(metadataPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Verify some content and ordering (basic check)
+	sMetadata := string(metadataContent)
+	if !strings.Contains(sMetadata, "\"api_shortname\": \"secretmanager\"") {
+		t.Errorf(".repo-metadata.json missing api_shortname")
+	}
+	if !strings.Contains(sMetadata, "\"repo_short\": \"google-cloud-secretmanager\"") {
+		t.Errorf(".repo-metadata.json missing repo_short")
+	}
+	if !strings.Contains(sMetadata, "\"transport\": \"both\"") {
+		t.Errorf(".repo-metadata.json missing transport")
 	}
 
 	// Verify that the file from srcjar was unzipped and moved

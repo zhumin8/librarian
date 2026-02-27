@@ -199,7 +199,7 @@ func generateLibraries(ctx context.Context, config *config.Config, libraries []*
 	case languageGo:
 		return golang.GenerateLibraries(ctx, libraries, googleapisDir)
 	case languageJava:
-		return java.GenerateLibraries(ctx, libraries, googleapisDir)
+		return java.GenerateLibraries(ctx, config, libraries, googleapisDir)
 	case languageRust:
 		return rust.GenerateLibraries(ctx, libraries, src)
 	default:

@@ -29,6 +29,7 @@ import (
 	"github.com/googleapis/librarian/internal/config"
 	"github.com/googleapis/librarian/internal/filesystem"
 	"github.com/googleapis/librarian/internal/librarian/java/clirr"
+	"github.com/googleapis/librarian/internal/repometadata"
 	"github.com/googleapis/librarian/internal/serviceconfig"
 	"github.com/googleapis/librarian/internal/yaml"
 )
@@ -48,9 +49,9 @@ var (
 )
 
 // GenerateLibraries generates all the given libraries in sequence.
-func GenerateLibraries(ctx context.Context, libraries []*config.Library, googleapisDir string) error {
+func GenerateLibraries(ctx context.Context, config *config.Config, libraries []*config.Library, googleapisDir string) error {
 	for _, library := range libraries {
-		if err := generate(ctx, library, googleapisDir); err != nil {
+		if err := generate(ctx, config, library, googleapisDir); err != nil {
 			return err
 		}
 	}
@@ -58,7 +59,7 @@ func GenerateLibraries(ctx context.Context, libraries []*config.Library, googlea
 }
 
 // generate generates a Java client library.
-func generate(ctx context.Context, library *config.Library, googleapisDir string) error {
+func generate(ctx context.Context, config *config.Config, library *config.Library, googleapisDir string) error {
 	if len(library.APIs) == 0 {
 		return fmt.Errorf("failed to generate library: no apis configured for library %q", library.Name)
 	}
@@ -75,14 +76,14 @@ func generate(ctx context.Context, library *config.Library, googleapisDir string
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 	for _, api := range library.APIs {
-		if err := generateAPI(ctx, api, library, googleapisDir, outdir); err != nil {
+		if err := generateAPI(ctx, config, api, library, googleapisDir, outdir); err != nil {
 			return fmt.Errorf("failed to generate api %q: %w", api.Path, err)
 		}
 	}
 	return nil
 }
 
-func generateAPI(ctx context.Context, api *config.API, library *config.Library, googleapisDir, outdir string) error {
+func generateAPI(ctx context.Context, config *config.Config, api *config.API, library *config.Library, googleapisDir, outdir string) error {
 	version := serviceconfig.ExtractVersion(api.Path)
 	if version == "" {
 		return fmt.Errorf("failed to generate api: failed to extract version from api path %q", api.Path)
@@ -107,7 +108,7 @@ func generateAPI(ctx context.Context, api *config.API, library *config.Library, 
 	if err := command.Run(ctx, args[0], args[1:]...); err != nil {
 		return fmt.Errorf("failed to run protoc: %w", err)
 	}
-	if err := postProcess(ctx, outdir, library.Name, version, googleapisDir, gapicDir, protos, library); err != nil {
+	if err := postProcess(ctx, config, outdir, library.Name, version, googleapisDir, gapicDir, protos, library); err != nil {
 		return fmt.Errorf("failed to post process: %w", err)
 	}
 	return nil
@@ -138,7 +139,7 @@ func constructProtocCommandArgs(api *config.API, googleapisDir string, protocOpt
 	return args, protos, nil
 }
 
-func postProcess(ctx context.Context, outdir, libraryName, version, googleapisDir, gapicDir string, protos []string, library *config.Library) error {
+func postProcess(ctx context.Context, cfg *config.Config, outdir, libraryName, version, googleapisDir, gapicDir string, protos []string, library *config.Library) error {
 	// Unzip the temp-codegen.srcjar into temporary version/ directory.
 	srcjarPath := filepath.Join(gapicDir, "temp-codegen.srcjar")
 	if _, err := os.Stat(srcjarPath); err == nil {
@@ -155,6 +156,15 @@ func postProcess(ctx context.Context, outdir, libraryName, version, googleapisDi
 	protoModuleRoot := filepath.Join(outdir, modules.proto)
 	if err := clirr.Generate(protoModuleRoot); err != nil {
 		return fmt.Errorf("failed to generate clirr ignore file: %w", err)
+	}
+
+	// Generate .repo-metadata.json
+	repoMetadata, repoShort, transport, err := createRepoMetadata(cfg, library, googleapisDir)
+	if err != nil {
+		return fmt.Errorf("failed to create repo metadata: %w", err)
+	}
+	if err := repoMetadata.WriteJava(outdir, repoShort, transport); err != nil {
+		return fmt.Errorf("failed to write repo metadata: %w", err)
 	}
 
 	// // Run owlbot.py if it exists.
@@ -252,6 +262,41 @@ func generateREADME(library *config.Library, api *serviceconfig.API, outdir stri
 	}
 
 	return readmeTmplParsed.Execute(f, data)
+}
+
+// createRepoMetadata creates (in memory, not on disk) a RepoMetadata suitable
+// for a Java library, and returns additional Java-specific fields.
+func createRepoMetadata(cfg *config.Config, library *config.Library, googleapisDir string) (*repometadata.RepoMetadata, string, string, error) {
+	metadata, err := repometadata.FromLibrary(cfg, library, googleapisDir)
+	if err != nil {
+		return nil, "", "", err
+	}
+	metadata.LibraryType = repometadata.GAPICAutoLibraryType
+	metadata.DefaultVersion = serviceconfig.ExtractVersion(library.APIs[0].Path)
+
+	// Java-specific fields calculation
+	modules := deriveModuleNames(library.Name, metadata.DefaultVersion)
+	repoShort := modules.gapic
+
+	// client_documentation
+	metadata.ClientDocumentation = fmt.Sprintf("https://cloud.google.com/java/docs/reference/%s/latest/overview", library.Name)
+
+	// transport
+	t := library.Transport
+	if t == "" {
+		t = "grpc+rest"
+	}
+	var convertedTransport string
+	switch t {
+	case "grpc":
+		convertedTransport = "grpc"
+	case "rest":
+		convertedTransport = "http"
+	default:
+		convertedTransport = "both"
+	}
+
+	return metadata, repoShort, convertedTransport, nil
 }
 
 // Partials represents hand-crafted artisanal markdown for README.md.
