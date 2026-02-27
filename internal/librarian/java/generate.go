@@ -147,6 +147,19 @@ func postProcess(ctx context.Context, outdir, libraryName, version, googleapisDi
 		return fmt.Errorf("failed to generate clirr ignore file: %w", err)
 	}
 
+	// Run owlbot.py if it exists.
+	// We assume 'synthtool' is already installed in the python environment.
+	owlbotPath := filepath.Join(outdir, "owlbot.py")
+	if _, err := os.Stat(owlbotPath); err == nil {
+		// synthtool requires SYNTHTOOL_TEMPLATES to be set to the location of the templates.
+		// However, in a standard setup, we want owlbot.py to run in its own directory
+		// so it can find .repo-metadata.json.
+		// should provide SYNTHTOOL_LIBRARY_VERSION and SYNTHTOOL_LIBRARIES_BOM_VERSION from environment variable
+		if err := command.RunInDir(ctx, outdir, "python3", "owlbot.py"); err != nil {
+			return fmt.Errorf("failed to run owlbot.py: %w", err)
+		}
+	}
+
 	// Cleanup intermediate protoc output directory after restructuring
 	if err := os.RemoveAll(filepath.Join(outdir, version)); err != nil {
 		return fmt.Errorf("failed to cleanup intermediate files: %w", err)
