@@ -17,17 +17,20 @@ package java
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"text/template"
 
 	"github.com/googleapis/librarian/internal/command"
 	"github.com/googleapis/librarian/internal/config"
 	"github.com/googleapis/librarian/internal/filesystem"
 	"github.com/googleapis/librarian/internal/librarian/java/clirr"
 	"github.com/googleapis/librarian/internal/serviceconfig"
+	"github.com/googleapis/librarian/internal/yaml"
 )
 
 const (
@@ -35,6 +38,13 @@ const (
 	grpcPrefix   = "grpc-"
 	protoPrefix  = "proto-"
 	commonProtos = "google/cloud/common_resources.proto"
+)
+
+var (
+	//go:embed template/_README.md.txt
+	readmeTmpl string
+
+	readmeTmplParsed = template.Must(template.New("readme").Parse(readmeTmpl))
 )
 
 // GenerateLibraries generates all the given libraries in sequence.
@@ -97,7 +107,7 @@ func generateAPI(ctx context.Context, api *config.API, library *config.Library, 
 	if err := command.Run(ctx, args[0], args[1:]...); err != nil {
 		return fmt.Errorf("failed to run protoc: %w", err)
 	}
-	if err := postProcess(ctx, outdir, library.Name, version, googleapisDir, gapicDir, protos); err != nil {
+	if err := postProcess(ctx, outdir, library.Name, version, googleapisDir, gapicDir, protos, library); err != nil {
 		return fmt.Errorf("failed to post process: %w", err)
 	}
 	return nil
@@ -128,7 +138,7 @@ func constructProtocCommandArgs(api *config.API, googleapisDir string, protocOpt
 	return args, protos, nil
 }
 
-func postProcess(ctx context.Context, outdir, libraryName, version, googleapisDir, gapicDir string, protos []string) error {
+func postProcess(ctx context.Context, outdir, libraryName, version, googleapisDir, gapicDir string, protos []string, library *config.Library) error {
 	// Unzip the temp-codegen.srcjar into temporary version/ directory.
 	srcjarPath := filepath.Join(gapicDir, "temp-codegen.srcjar")
 	if _, err := os.Stat(srcjarPath); err == nil {
@@ -147,16 +157,27 @@ func postProcess(ctx context.Context, outdir, libraryName, version, googleapisDi
 		return fmt.Errorf("failed to generate clirr ignore file: %w", err)
 	}
 
-	// Run owlbot.py if it exists.
-	// We assume 'synthtool' is already installed in the python environment.
-	owlbotPath := filepath.Join(outdir, "owlbot.py")
-	if _, err := os.Stat(owlbotPath); err == nil {
-		// synthtool requires SYNTHTOOL_TEMPLATES to be set to the location of the templates.
-		// However, in a standard setup, we want owlbot.py to run in its own directory
-		// so it can find .repo-metadata.json.
-		// should provide SYNTHTOOL_LIBRARY_VERSION and SYNTHTOOL_LIBRARIES_BOM_VERSION from environment variable
-		if err := command.RunInDir(ctx, outdir, "python3", "owlbot.py"); err != nil {
-			return fmt.Errorf("failed to run owlbot.py: %w", err)
+	// // Run owlbot.py if it exists.
+	// // We assume 'synthtool' is already installed in the python environment.
+	// owlbotPath := filepath.Join(outdir, "owlbot.py")
+	// if _, err := os.Stat(owlbotPath); err == nil {
+	// 	// synthtool requires SYNTHTOOL_TEMPLATES to be set to the location of the templates.
+	// 	// However, in a standard setup, we want owlbot.py to run in its own directory
+	// 	// so it can find .repo-metadata.json.
+	// 	// should provide SYNTHTOOL_LIBRARY_VERSION and SYNTHTOOL_LIBRARIES_BOM_VERSION from environment variable
+	// 	if err := command.RunInDir(ctx, outdir, "python3", "owlbot.py"); err != nil {
+	// 		return fmt.Errorf("failed to run owlbot.py: %w", err)
+	// 	}
+	// }
+
+	// Generate README.md
+	if len(library.APIs) > 0 {
+		api, err := serviceconfig.Find(googleapisDir, library.APIs[0].Path, serviceconfig.LangJava)
+		if err != nil {
+			return fmt.Errorf("failed to find api config for README generation: %w", err)
+		}
+		if err := generateREADME(library, api, outdir); err != nil {
+			return fmt.Errorf("failed to generate README.md: %w", err)
 		}
 	}
 
@@ -165,6 +186,109 @@ func postProcess(ctx context.Context, outdir, libraryName, version, googleapisDi
 		return fmt.Errorf("failed to cleanup intermediate files: %w", err)
 	}
 	return nil
+}
+
+func generateREADME(library *config.Library, api *serviceconfig.API, outdir string) error {
+	readmePath := filepath.Join(outdir, "README.md")
+	// Skip generating README if it's in the keep list.
+	for _, k := range library.Keep {
+		if k == "README.md" {
+			return nil
+		}
+	}
+
+	partials, err := loadPartials(outdir)
+	if err != nil {
+		return err
+	}
+
+	f, err := os.Create(readmePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	modules := deriveModuleNames(library.Name, serviceconfig.ExtractVersion(api.Path))
+	releaseLevel := library.ReleaseLevel
+	if releaseLevel == "" {
+		releaseLevel = "preview"
+	}
+	bomVersion := os.Getenv("SYNTHTOOL_LIBRARIES_BOM_VERSION")
+	if bomVersion == "" {
+		bomVersion = "26.54.0" // Default/Fallback
+	}
+
+	data := struct {
+		Title               string
+		ArtifactID          string
+		GroupID             string
+		Version             string
+		Description         string
+		ShortName           string
+		ReleaseLevel        string
+		LibrariesBomVersion string
+		DocumentationURI    string
+		Transport           string
+		MinJavaVersion      int
+		RequiresBilling     bool
+		Partials            *Partials
+	}{
+		Title:               api.Title,
+		ArtifactID:          modules.gapic,
+		GroupID:             "com.google.cloud", // Default for Google Cloud Java
+		Version:             library.Version,
+		Description:         api.Description,
+		ShortName:           api.ShortName,
+		ReleaseLevel:        releaseLevel,
+		LibrariesBomVersion: bomVersion,
+		DocumentationURI:    api.DocumentationURI,
+		Transport:           library.Transport,
+		MinJavaVersion:      8, // Default for Google Cloud Java
+		RequiresBilling:     false,
+		Partials:            partials,
+	}
+	if data.Transport == "" {
+		data.Transport = "grpc+rest"
+	}
+
+	return readmeTmplParsed.Execute(f, data)
+}
+
+// Partials represents hand-crafted artisanal markdown for README.md.
+type Partials struct {
+	// About overrides the "About [API Name]" section.
+	About string `yaml:"about"`
+	// Body overrides the "Usage" section.
+	Body string `yaml:"body"`
+	// Contributing overrides the "Contributing" section.
+	Contributing string `yaml:"contributing"`
+	// CustomContent appends extra content after the "About" section.
+	CustomContent string `yaml:"custom_content"`
+	// DeprecationWarning displays a warning at the top of the README.
+	DeprecationWarning string `yaml:"deprecation_warning"`
+	// Introduction is currently unused in the template but preserved for parity.
+	Introduction string `yaml:"introduction"`
+	// Title overrides the default README title.
+	Title string `yaml:"title"`
+	// Versioning overrides the "Versioning" section.
+	Versioning string `yaml:"versioning"`
+}
+
+func loadPartials(outdir string) (*Partials, error) {
+	paths := []string{
+		filepath.Join(outdir, ".readme-partials.yml"),
+		filepath.Join(outdir, ".readme-partials.yaml"),
+	}
+	for _, path := range paths {
+		if _, err := os.Stat(path); err == nil {
+			partials, err := yaml.Read[Partials](path)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read partials from %s: %w", path, err)
+			}
+			return partials, nil
+		}
+	}
+	return &Partials{}, nil
 }
 
 func createProtocOptions(api *config.API, library *config.Library, googleapisDir, protoDir, grpcDir, gapicDir string) ([]string, error) {

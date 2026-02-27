@@ -28,6 +28,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/googleapis/librarian/internal/config"
+	"github.com/googleapis/librarian/internal/serviceconfig"
 	"github.com/googleapis/librarian/internal/testhelper"
 )
 
@@ -231,7 +232,12 @@ func TestPostProcess(t *testing.T) {
 	}
 
 	protos := []string{filepath.Join(googleapisDir, "google/cloud/secretmanager/v1/service.proto")}
-	if err := postProcess(t.Context(), outdir, libraryName, version, googleapisDir, gapicDir, protos); err != nil {
+	library := &config.Library{
+		Name:    libraryName,
+		Version: "1.2.3",
+		APIs:    []*config.API{{Path: "google/cloud/secretmanager/v1"}},
+	}
+	if err := postProcess(t.Context(), outdir, libraryName, version, googleapisDir, gapicDir, protos, library); err != nil {
 		t.Fatalf("postProcess failed: %v", err)
 	}
 
@@ -430,5 +436,103 @@ func TestCollectJavaFiles(t *testing.T) {
 	sort.Strings(want)
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("collectJavaFiles() mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestGenerateREADME(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		library      *config.Library
+		api          *serviceconfig.API
+		partials     string
+		env          map[string]string
+		wantContains []string
+	}{
+		{
+			name: "basic README",
+			library: &config.Library{
+				Name:    "secretmanager",
+				Version: "1.2.3",
+			},
+			api: &serviceconfig.API{
+				Title:       "Secret Manager",
+				ShortName:   "secretmanager",
+				Path:        "google/cloud/secretmanager/v1",
+				Description: "is a secure way to store and manage secrets.",
+			},
+			wantContains: []string{
+				"# Google Secret Manager Client for Java",
+				"com.google.cloud:google-cloud-secretmanager:1.2.3",
+				"stability-preview-yellow.svg",
+				"## Transport",
+				"Secret Manager uses both gRPC and HTTP/JSON for the transport layer.",
+				"## Supported Java Versions",
+				"Java 8 or above is required for using this client.",
+				"## License",
+				"Java is a registered trademark of Oracle and/or its affiliates.",
+				"https://central.sonatype.com/artifact/com.google.cloud/google-cloud-secretmanager/1.2.3",
+			},
+		},
+		{
+			name: "README with partials",
+			library: &config.Library{
+				Name:    "secretmanager",
+				Version: "1.2.3",
+			},
+			api: &serviceconfig.API{
+				Title:       "Secret Manager",
+				ShortName:   "secretmanager",
+				Path:        "google/cloud/secretmanager/v1",
+				Description: "is a secure way to store and manage secrets.",
+			},
+			partials: "body: This is a custom body.",
+			wantContains: []string{
+				"## Usage",
+				"This is a custom body.",
+			},
+		},
+		{
+			name: "README with BOM version from env",
+			library: &config.Library{
+				Name:    "secretmanager",
+				Version: "1.2.3",
+			},
+			api: &serviceconfig.API{
+				Title:     "Secret Manager",
+				ShortName: "secretmanager",
+				Path:      "google/cloud/secretmanager/v1",
+			},
+			env: map[string]string{"SYNTHTOOL_LIBRARIES_BOM_VERSION": "100.0.0"},
+			wantContains: []string{
+				"<version>100.0.0</version>",
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			if test.partials != "" {
+				if err := os.WriteFile(filepath.Join(tmpDir, ".readme-partials.yml"), []byte(test.partials), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for k, v := range test.env {
+				t.Setenv(k, v)
+			}
+
+			if err := generateREADME(test.library, test.api, tmpDir); err != nil {
+				t.Fatalf("generateREADME() error = %v", err)
+			}
+
+			content, err := os.ReadFile(filepath.Join(tmpDir, "README.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			sContent := string(content)
+			for _, want := range test.wantContains {
+				if !strings.Contains(sContent, want) {
+					t.Errorf("README.md does not contain %q. Got:\n%s", want, sContent)
+				}
+			}
+		})
 	}
 }
