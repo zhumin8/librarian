@@ -156,6 +156,9 @@ func runJavaMigration(ctx context.Context, repoPath string) error {
 	if err := librarian.RunTidyOnConfig(ctx, repoPath, cfg); err != nil {
 		return errTidyFailed
 	}
+	if err := migrateOwlBot(repoPath); err != nil {
+		return err
+	}
 	log.Printf("Successfully migrated %d Java libraries", len(cfg.Libraries))
 	return nil
 }
@@ -326,4 +329,110 @@ func parseArtifactID(distributionName, name string) string {
 
 func invertBoolPtr(p *bool) bool {
 	return p != nil && !*p
+}
+
+func migrateOwlBot(repoPath string) error {
+	customized := map[string]bool{
+		"java-bigquerydatatransfer":  true,
+		"java-containeranalysis":     true,
+		"java-dialogflow":            true,
+		"java-dlp":                   true,
+		"java-errorreporting":        true,
+		"java-grafeas":               true,
+		"java-kms":                   true,
+		"java-logging":               true,
+		"java-monitoring-dashboards": true,
+		"java-monitoring":            true,
+		"java-network-management":    true,
+		"java-notification":          true,
+		"java-os-login":              true,
+		"java-securitycenter":        true,
+		"java-service-management":    true,
+		"java-tasks":                 true,
+		"java-vision":                true,
+	}
+
+	pattern := filepath.Join(repoPath, "**/owlbot.py")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return err
+	}
+
+	for _, match := range matches {
+		rel, err := filepath.Rel(repoPath, match)
+		if err != nil {
+			return err
+		}
+		dir := filepath.Dir(rel)
+		if !customized[dir] {
+			if err := os.Remove(match); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// Refactor customized owlbot.py
+		content, err := os.ReadFile(match)
+		if err != nil {
+			return err
+		}
+		newContent := refactorOwlBot(string(content))
+		if newContent == "" {
+			if err := os.Remove(match); err != nil {
+				return err
+			}
+		} else {
+			if err := os.WriteFile(match, []byte(newContent), 0644); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func refactorOwlBot(content string) string {
+	lines := strings.Split(content, "\n")
+	var newLines []string
+	skip := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "s.remove_staging_dirs()") {
+			skip = true
+			continue
+		}
+		if strings.HasPrefix(trimmed, "java.common_templates") {
+			skip = true
+			if !strings.HasSuffix(trimmed, ")") {
+				continue
+			}
+			skip = false
+			continue
+		}
+		if skip {
+			if strings.HasPrefix(line, "    ") || strings.HasPrefix(line, ")") || strings.HasPrefix(line, "]") {
+				continue
+			}
+			skip = false
+			// check if current line should also be skipped
+			if strings.HasPrefix(trimmed, "s.remove_staging_dirs()") || strings.HasPrefix(trimmed, "java.common_templates") {
+				skip = true
+				if strings.HasPrefix(trimmed, "java.common_templates") && strings.HasSuffix(trimmed, ")") {
+					skip = false
+				}
+				continue
+			}
+		}
+		newLines = append(newLines, line)
+	}
+
+	res := strings.Join(newLines, "\n")
+	if strings.TrimSpace(res) == "" {
+		return ""
+	}
+	if !strings.Contains(res, "java.") && !strings.Contains(res, "java_") {
+		res = strings.Replace(res, "from synthtool.languages import java", "", 1)
+		res = strings.Replace(res, "import synthtool.languages.java as java", "", 1)
+	}
+
+	return strings.Trim(res, "\n") + "\n"
 }
