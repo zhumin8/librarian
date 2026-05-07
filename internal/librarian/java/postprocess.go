@@ -33,7 +33,10 @@ import (
 	"github.com/googleapis/librarian/internal/serviceconfig"
 )
 
-const owlbotTemplatesRelPath = "sdk-platform-java/hermetic_build/library_generation/owlbot/templates"
+const (
+	owlbotTemplatesRelPath = "sdk-platform-java/hermetic_build/library_generation/owlbot/templates"
+	owlbotStagingDir       = "owl-bot-staging"
+)
 
 var (
 	errOwlBotMissing    = errors.New("owlbot.py not found")
@@ -74,6 +77,9 @@ func postProcessLibrary(ctx context.Context, p libraryPostProcessParams) error {
 	if err != nil {
 		return err
 	}
+	if err := removeKeptFilesFromStaging(p.library, p.outDir); err != nil {
+		return fmt.Errorf("failed to remove kept files from staging: %w", err)
+	}
 	if err := runOwlBot(ctx, p.library, p.outDir, bomVersion); err != nil {
 		return fmt.Errorf("%w: %w", errRunOwlBot, err)
 	}
@@ -98,6 +104,8 @@ func (p postProcessParams) protoDir() string { return filepath.Join(p.outDir, p.
 func (p postProcessParams) coords() APICoordinate {
 	return DeriveAPICoordinates(DeriveLibraryCoordinates(p.library), p.apiBase, p.javaAPI)
 }
+
+func stagingDir(outDir string) string { return filepath.Join(outDir, owlbotStagingDir) }
 
 func postProcessAPI(ctx context.Context, p postProcessParams) error {
 	gapicDir := p.gapicDir()
@@ -130,7 +138,7 @@ func postProcessAPI(ctx context.Context, p postProcessParams) error {
 		return fmt.Errorf("failed to check for clirr ignore file: %w", err)
 	}
 	if shouldGenerate {
-		protoModuleStagingRoot := filepath.Join(p.outDir, "owl-bot-staging", p.apiBase, coords.Proto.ArtifactID)
+		protoModuleStagingRoot := filepath.Join(stagingDir(p.outDir), p.apiBase, coords.Proto.ArtifactID)
 		if err := generateClirrIgnore(protoModuleStagingRoot); err != nil {
 			return fmt.Errorf("failed to generate clirr ignore file: %w", err)
 		}
@@ -228,7 +236,7 @@ func removeConflictingFiles(protoSrcDir string) error {
 // {apiBase} directory (e.g., owl-bot-staging/v1/proto-google-cloud-chat-v1) to
 // ensure synthtool preserves the module structure.
 func restructureToStaging(p postProcessParams) error {
-	stagingDir := filepath.Join(p.outDir, "owl-bot-staging")
+	stagingDir := stagingDir(p.outDir)
 	destRoot := filepath.Join(stagingDir, p.apiBase)
 	if p.javaAPI.Monolithic {
 		destRoot = filepath.Join(destRoot, "src")
@@ -414,4 +422,55 @@ func copyProtos(protoSourceDir string, protos []string, destDir string) error {
 		}
 	}
 	return nil
+}
+
+// removeKeptFilesFromStaging removes files and directories from the staging area
+// that are marked to be preserved in the library configuration.
+//
+// It operates on the assumption that the staging directory structure nests
+// modules under an API base directory component (e.g., owl-bot-staging/v1/proto-google-cloud-library-v1/...).
+// It strips this first component (the API base like "v1") from the relative
+// path to reconstruct the expected path relative to the library root, which is
+// then matched against the library's Keep configuration.
+func removeKeptFilesFromStaging(library *config.Library, outDir string) error {
+	stagingDir := stagingDir(outDir)
+	if _, err := os.Stat(stagingDir); os.IsNotExist(err) {
+		return nil
+	}
+	keepSet := make(map[string]bool)
+	for _, keep := range library.Keep {
+		normalized := strings.TrimSuffix(filepath.ToSlash(keep), "/")
+		keepSet[normalized] = true
+	}
+	return filepath.WalkDir(stagingDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		relToStaging, err := filepath.Rel(stagingDir, path)
+		if err != nil {
+			return err
+		}
+		relSlash := filepath.ToSlash(relToStaging)
+		i := strings.Index(relSlash, "/")
+		if i == -1 {
+			// Skip the staging root "." and API base directories (e.g., "v1").
+			return nil
+		}
+		keepPath := relSlash[i+1:]
+		if d.IsDir() {
+			if keepSet[keepPath] {
+				if err := os.RemoveAll(path); err != nil {
+					return fmt.Errorf("failed to remove kept dir %s from staging: %w", path, err)
+				}
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if shouldPreserve(keepPath, keepSet) {
+			if err := os.Remove(path); err != nil {
+				return fmt.Errorf("failed to remove kept file %s from staging: %w", path, err)
+			}
+		}
+		return nil
+	})
 }
