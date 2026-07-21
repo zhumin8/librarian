@@ -115,6 +115,7 @@ deep-copy-regex:
 						Path: "google/cloud/secretmanager/v1",
 						PHP: &config.PHPAPI{
 							StagingSubdir: "v1",
+							MigrationMode: "NEW_SURFACE_ONLY",
 						},
 					},
 				},
@@ -347,12 +348,14 @@ func TestParsePHPBazel(t *testing.T) {
 		bazelRules          string
 		want                []string
 		wantCommonResources bool
+		wantMigrationMode   string
 	}{
 		{
 			name:                "no BUILD.bazel",
 			bazelRules:          "",
 			want:                nil,
 			wantCommonResources: false,
+			wantMigrationMode:   "",
 		},
 		{
 			name: "valid BUILD.bazel with location and iam mixins",
@@ -373,6 +376,7 @@ proto_library_with_info(
 				"google/iam/v1/iam_policy.proto",
 			},
 			wantCommonResources: true,
+			wantMigrationMode:   "",
 		},
 		{
 			name: "valid BUILD.bazel with no mixins",
@@ -387,6 +391,7 @@ proto_library_with_info(
 `,
 			want:                nil,
 			wantCommonResources: true,
+			wantMigrationMode:   "",
 		},
 		{
 			name: "valid BUILD.bazel with no common resources",
@@ -400,6 +405,19 @@ proto_library_with_info(
 `,
 			want:                nil,
 			wantCommonResources: false,
+			wantMigrationMode:   "",
+		},
+		{
+			name: "valid BUILD.bazel with migration_mode",
+			bazelRules: `
+php_gapic_library(
+    name = "ces_php_gapic",
+    migration_mode = "NEW_SURFACE_ONLY",
+)
+`,
+			want:                nil,
+			wantCommonResources: false,
+			wantMigrationMode:   "NEW_SURFACE_ONLY",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -413,7 +431,7 @@ proto_library_with_info(
 					t.Fatal(err)
 				}
 			}
-			got, gotCommonResources, err := parsePHPBazel(tempDir, "google/cloud/ces/v1")
+			got, gotCommonResources, gotMigrationMode, err := parsePHPBazel(tempDir, "google/cloud/ces/v1")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -422,6 +440,9 @@ proto_library_with_info(
 			}
 			if gotCommonResources != test.wantCommonResources {
 				t.Errorf("mismatch common resources flag: want %t, got %t", test.wantCommonResources, gotCommonResources)
+			}
+			if gotMigrationMode != test.wantMigrationMode {
+				t.Errorf("mismatch migration mode: want %q, got %q", test.wantMigrationMode, gotMigrationMode)
 			}
 		})
 	}
@@ -470,6 +491,7 @@ deep-copy-regex:
 							Path: "google/cloud/secretmanager/v1",
 							PHP: &config.PHPAPI{
 								StagingSubdir: "v1",
+								MigrationMode: "NEW_SURFACE_ONLY",
 							},
 						},
 						{

@@ -218,12 +218,12 @@ func findPHPLibraries(repoPath string, googleapisDir string, globalDefaultCommon
 		}
 
 		for _, api := range apis {
-			additionalProtos, hasCommonResources, err := parsePHPBazel(googleapisDir, api.Path)
+			additionalProtos, hasCommonResources, migrationMode, err := parsePHPBazel(googleapisDir, api.Path)
 			if err != nil {
 				log.Printf("Warning: failed to parse BUILD.bazel for %s: %v", api.Path, err)
 				continue
 			}
-			if len(additionalProtos) > 0 || hasCommonResources != globalDefaultCommonResources {
+			if len(additionalProtos) > 0 || hasCommonResources != globalDefaultCommonResources || migrationMode != "" {
 				if api.PHP == nil {
 					api.PHP = &config.PHPAPI{}
 				}
@@ -233,6 +233,9 @@ func findPHPLibraries(repoPath string, googleapisDir string, globalDefaultCommon
 			}
 			if hasCommonResources != globalDefaultCommonResources {
 				api.PHP.CommonResources = &hasCommonResources
+			}
+			if migrationMode != "" {
+				api.PHP.MigrationMode = migrationMode
 			}
 		}
 
@@ -250,16 +253,17 @@ func findPHPLibraries(repoPath string, googleapisDir string, globalDefaultCommon
 	return libs, nil
 }
 
-func parsePHPBazel(googleapisDir, apiPath string) ([]string, bool, error) {
+func parsePHPBazel(googleapisDir, apiPath string) ([]string, bool, string, error) {
 	file, err := parseBazel(googleapisDir, apiPath)
 	if err != nil {
-		return nil, false, err
+		return nil, false, "", err
 	}
 	if file == nil {
-		return nil, false, nil
+		return nil, false, "", nil
 	}
 	var additionalProtos []string
 	var hasCommonResources bool
+	var migrationMode string
 	if rules := file.Rules("proto_library_with_info"); len(rules) > 0 {
 		rule := rules[0]
 		if attr := rule.Attr("deps"); attr != nil {
@@ -289,7 +293,15 @@ func parsePHPBazel(googleapisDir, apiPath string) ([]string, bool, error) {
 			}
 		}
 	}
-	return additionalProtos, hasCommonResources, nil
+	if rules := file.Rules("php_gapic_library"); len(rules) > 0 {
+		rule := rules[0]
+		if attr := rule.Attr("migration_mode"); attr != nil {
+			if strs := extractStrings(attr); len(strs) > 0 {
+				migrationMode = strs[0]
+			}
+		}
+	}
+	return additionalProtos, hasCommonResources, migrationMode, nil
 }
 
 func parseBazel(googleapisDir, dir string) (*build.File, error) {
