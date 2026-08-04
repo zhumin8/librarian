@@ -16,6 +16,7 @@ package java
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -87,6 +88,7 @@ func TestFormat_LookPathError(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", "")
+	t.Setenv("LIBRARIAN_BIN", t.TempDir())
 	err := FormatLibraries(t.Context(), []*config.Library{{Output: tmpDir}})
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -170,5 +172,26 @@ func TestFormatLibraries_MultipleLibraries(t *testing.T) {
 	}
 	if !bytes.Equal(gotContent2, wantContent2) {
 		t.Errorf("file2 content mismatch\ngot:  %q\nwant: %q", gotContent2, wantContent2)
+	}
+}
+
+func TestFormatLibraries_Chunking(t *testing.T) {
+	testhelper.RequireCommand(t, "google-java-format")
+	origBatchSize := maxBatchSize
+	maxBatchSize = 2
+	t.Cleanup(func() { maxBatchSize = origBatchSize })
+
+	tmpDir := t.TempDir()
+	// Create 5 files with maxBatchSize=2 to verify chunking across multiple batch boundaries.
+	for i := range 5 {
+		filename := filepath.Join(tmpDir, fmt.Sprintf("Test%d.java", i))
+		content := fmt.Appendf(nil, "package test;\n\npublic class Test%d {}", i)
+		if err := os.WriteFile(filename, content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	libraries := []*config.Library{{Output: tmpDir}}
+	if err := FormatLibraries(t.Context(), libraries); err != nil {
+		t.Fatalf("FormatLibraries() error = %v, want nil", err)
 	}
 }

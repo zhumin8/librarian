@@ -25,7 +25,9 @@ import (
 	"github.com/googleapis/librarian/internal/config"
 )
 
-// FormatLibraries formats multiple Java client libraries using google-java-format in a single batch.
+var maxBatchSize = 4000
+
+// FormatLibraries formats multiple Java client libraries using google-java-format in batches.
 func FormatLibraries(ctx context.Context, libraries []*config.Library) error {
 	var allFiles []string
 	for _, library := range libraries {
@@ -38,20 +40,23 @@ func FormatLibraries(ctx context.Context, libraries []*config.Library) error {
 	if len(allFiles) == 0 {
 		return nil
 	}
-	args := append([]string{"--replace"}, allFiles...)
 	env, err := getToolsEnv()
 	if err != nil {
 		return err
 	}
-	// Run google-java-format twice.
-	// The first run removes unused imports but might leave extra empty lines.
-	// The second run collapses those empty lines.
-	// TODO(https://github.com/google/google-java-format/issues/1436): Remove second pass once fixed upstream.
-	if err := command.RunWithEnv(ctx, env, "google-java-format", args...); err != nil {
-		return fmt.Errorf("failed to format files (pass 1): %w", err)
-	}
-	if err := command.RunWithEnv(ctx, env, "google-java-format", args...); err != nil {
-		return fmt.Errorf("failed to format files (pass 2): %w", err)
+	for i := 0; i < len(allFiles); i += maxBatchSize {
+		end := min(i+maxBatchSize, len(allFiles))
+		args := append([]string{"--replace"}, allFiles[i:end]...)
+		// Run google-java-format twice.
+		// The first run removes unused imports but might leave extra empty lines.
+		// The second run collapses those empty lines.
+		// TODO(https://github.com/google/google-java-format/issues/1436): Remove second pass once fixed upstream.
+		if err := command.RunWithEnv(ctx, env, "google-java-format", args...); err != nil {
+			return fmt.Errorf("failed to format files (pass 1): %w", err)
+		}
+		if err := command.RunWithEnv(ctx, env, "google-java-format", args...); err != nil {
+			return fmt.Errorf("failed to format files (pass 2): %w", err)
+		}
 	}
 	return nil
 }
